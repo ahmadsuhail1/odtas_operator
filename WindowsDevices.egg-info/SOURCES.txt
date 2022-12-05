@@ -1,0 +1,5 @@
+setup.py
+WindowsDevices.egg-info/PKG-INFO
+WindowsDevices.egg-info/SOURCES.txt
+WindowsDevices.egg-info/dependency_links.txt
+WindowsDevices.egg-info/top_level.txt
