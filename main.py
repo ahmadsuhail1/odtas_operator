@@ -92,7 +92,6 @@ tracking_ids = []
 global detection_obj, model_all_names
 
 detection_obj = ObjectDetection("http://192.168.137.143:4747/video", "yolov5n.pt")
-# detection_obj = ObjectDetection("http://192.168.18.211:4747/video", "yolov5n.pt")
 
 
 detection_obj.start()

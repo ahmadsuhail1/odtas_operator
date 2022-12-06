@@ -142,7 +142,7 @@ class ObjectDetection:
                     row[0]*x_shape), int(row[1]*y_shape), int(row[2]*x_shape), int(row[3]*y_shape)
                 text_d = self.class_to_label(labels[i])
                 
-                if text_d == "Person":
+                if text_d == "person":
                     cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)    
                     cv2.putText(frame, text_d, (x1, y1), cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
                 elif text_d == "Car":

@@ -1,18 +1,13 @@
 import cv2
 import importlib
-import os
-import os.path as osp
-import tempfile
-import mmcv
-import torch
 from mmtrack.apis import inference_sot, init_model
-from serial import Serial
-
-from simplebgc.gimbal import Gimbal, ControlMode,ControlOutCmd
+from simplebgc.gimbal import Gimbal, ControlMode
+from pathlib import Path
 
 device =  importlib.import_module("python-capture-device-list.device")
 
 def select_camera(last_index):
+    
     number = 0
     # hint = "Select a camera (0 to " + str(last_index) + "): "
     # try:
@@ -41,8 +36,16 @@ def main():
     print("OpenCV version: " + cv2.__version__)
     show = True
     input_number = 1
-    config = "mmtracking/configs/sot/siamese_rpn/siamese_rpn_r50_20e_lasot.py"
-    checkpoint = "mmtracking/checkpoints/siamese_rpn_r50_20e_lasot_20220420_181845-dd0f151e.pth"
+    sot_config_model = Path('configs/sot/siamese_rpn/siamese_rpn_r50_20e_lasot.py')
+    sot_checkpoint_model = Path('checkpoints/siamese_rpn_r50_20e_lasot_20220420_181845-dd0f151e.pth')
+    config_path = Path(__file__).parent / sot_config_model
+    checkpoint_path = Path(__file__).parent / sot_checkpoint_model
+    
+    print(config_path)
+    print(checkpoint_path)
+    
+    # config = "mmtracking/configs/sot/siamese_rpn/siamese_rpn_r50_20e_lasot.py"
+    # checkpoint = "mmtracking/checkpoints/siamese_rpn_r50_20e_lasot_20220420_181845-dd0f151e.pth"
     # Get camera list
     device_list = device.getDeviceList()
     # print(device_list)
@@ -51,7 +54,7 @@ def main():
 
 
     for camera in device_list:
-        print(str(index) + ': ' + camera[0] + ' ' + str(camera[1]))
+        # print(str(index) + ': ' + camera[0] + ' ' + str(camera[1]))
         index += 1
 
     last_index = index - 1
@@ -69,7 +72,8 @@ def main():
 
 
     # Select a camera
-    camera_number = select_camera(last_index)
+    # camera_number = select_camera(last_index)
+    camera_number = last_index
     
 
     # load images
@@ -116,7 +120,7 @@ def main():
 
 
     # build the model from a config file and a checkpoint file
-    model = init_model(config, checkpoint)
+    model = init_model(config_path, checkpoint_path)
 
     i = 0
 
