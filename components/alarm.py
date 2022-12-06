@@ -2,16 +2,21 @@
 
 from playsound import playsound
 from threading import Thread
-import time
+from pathlib import Path
+
 import asyncio
 
 
 #play sound in thread
+ROOT = Path(__file__).resolve().parents[1]
+alarm_name = "alert.mp3"
+
+sound_path = Path(ROOT / "backend" / alarm_name)
 
 
 def play_sound():
 
-    playsound('D:/Workspace/FYP/Development/campaign-manager/backend/alert.mp3', False)
+    playsound(sound_path, False)
 
 async def run_alarm_in_thread():
     t = Thread(target=play_sound,daemon=True)
