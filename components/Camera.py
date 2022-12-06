@@ -3,7 +3,6 @@ from pathlib import Path
 import cv2
 
 from threading import Thread
-import threading
 import torch
 import torch.backends.cudnn as cudnn
 import numpy as np
@@ -25,8 +24,8 @@ class ObjectDetection:
     
     FILE = Path(__file__).resolve()
     ROOT = FILE.parents[1]  # yolov5 strongsort root directory
-    PATH = "D:\\Workspace\\FYP\\Development\\campaign-manager\\backend\\yolov5"
-    PATH_2 = ROOT / 'yolov5'
+    # PATH = "D:\\Workspace\\FYP\\Development\\campaign-manager\\backend\\yolov5"
+    PATH = ROOT / 'yolov5'
     
     def __init__(self, capture_index, model_name, imgsz = (640,640)):
         """
@@ -87,11 +86,12 @@ class ObjectDetection:
         """
 
         if model_name:
-            global PATH, ROOT
-            weights_path = Path(self.PATH) / 'weights' / f'{model_name}.pt'
+            
+            weight_path = self.ROOT / 'weights' / model_name
+            
             model = torch.hub.load(self.PATH,
                                    'custom',
-                                   path="D:\\Workspace\\FYP\\Development\\campaign-manager\\backend\\yolov5s.pt",
+                                   weight_path,
                                    source='local',
                                    force_reload=True
                                    )            
