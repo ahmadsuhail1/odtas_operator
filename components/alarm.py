@@ -3,27 +3,30 @@
 from playsound import playsound
 from threading import Thread
 from pathlib import Path
+import time
 
-import asyncio
 
 
 #play sound in thread
-ROOT = Path(__file__).resolve().parents[1]
-alarm_name = "alert.mp3"
+global ROOT, alarm_name, sound_path
+ROOT = str(Path(__file__).resolve().parents[1])
+alarm_name = "/alert.mp3"
 
-sound_path = Path(ROOT / "backend" / alarm_name)
-
+sound_path = ROOT + alarm_name
 
 def play_sound():
+    global sound_path
+    print (sound_path)
 
     playsound(sound_path, False)
 
-async def run_alarm_in_thread():
-    t = Thread(target=play_sound,daemon=True)
+def run_alarm_in_thread():
+    t = Thread(target=play_sound)
+    
     t.start()
-    await asyncio.sleep(1)
+    time.sleep(1)
     t.join()
-    print("Done")
+    return
     
     
 # if "__main__" == __name__:    

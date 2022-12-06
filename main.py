@@ -1,9 +1,10 @@
 # imports for working with FASTAPI
-from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Response, Form
+from fastapi import FastAPI, UploadFile, File, Request, Response, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import shutil
 from pydantic import BaseModel
+import copy
 
 # imports for loading the YOLO Model
 import torch
@@ -115,22 +116,22 @@ VIDEOS.mkdir(parents=True,exist_ok=True)
 # ======================================================================
 
 cfg = get_config()
-# cfg.merge_from_file(config_strongsort)
+cfg.merge_from_file(config_strongsort)
 
-# tracker = StrongSORT(
-#     strong_sort_weights,
-#     device,
-#     half,
-#     max_dist=cfg.STRONGSORT.MAX_DIST,
-#     max_iou_distance=cfg.STRONGSORT.MAX_IOU_DISTANCE,
-#     max_age=cfg.STRONGSORT.MAX_AGE,
-#     n_init=cfg.STRONGSORT.N_INIT,
-#     nn_budget=cfg.STRONGSORT.NN_BUDGET,
-#     mc_lambda=cfg.STRONGSORT.MC_LAMBDA,
-#     ema_alpha=cfg.STRONGSORT.EMA_ALPHA,
-# )
+tracker = StrongSORT(
+    strong_sort_weights,
+    device,
+    half,
+    max_dist=cfg.STRONGSORT.MAX_DIST,
+    max_iou_distance=cfg.STRONGSORT.MAX_IOU_DISTANCE,
+    max_age=cfg.STRONGSORT.MAX_AGE,
+    n_init=cfg.STRONGSORT.N_INIT,
+    nn_budget=cfg.STRONGSORT.NN_BUDGET,
+    mc_lambda=cfg.STRONGSORT.MC_LAMBDA,
+    ema_alpha=cfg.STRONGSORT.EMA_ALPHA,
+)
 
-# tracker.model.warmup()
+tracker.model.warmup()
 outputs = [None] * nr_sources
 
 # The variables in base model should be same as declared in the frontend
@@ -152,11 +153,9 @@ class AlarmClass(BaseModel):
 
 @torch.no_grad()
 def generate_frames():
-    global tracker, outputs, tracking_ids
-    global detection_obj, detection_switch, camera_switch, tracking_switch, model_all_names, recorder_frame
-    # print("Thread in main action =================== ", threading.get_ident())
+    global tracker, outputs, tracking_ids, alert_class
+    global detection_obj, detection_switch, camera_switch, tracking_switch, model_all_names, recorder_frame, is_alarm
     names = detection_obj.model.names
-    # print("===========")
     model_all_names = list(names.keys())
     
     while True:     
@@ -169,7 +168,7 @@ def generate_frames():
                 recorder_frame = real_frame.copy()
                 
             # =======================================
-            # print(detection_switch)
+
             if detection_switch and not tracking_switch:
                 
                 results = detection_obj.score_frame(real_frame)
@@ -197,7 +196,7 @@ def generate_frames():
                     clss = det[:, 5]
                     
                     if tracking_switch:
-                        outputs = tracker.update(xywhs.cpu(), confs.cpu(), clss.cpu(), real_frame)
+                        outputs = tracker.update(det, real_frame)
                         
                         # draw boxes for visualization
                         if len(outputs) > 0:
@@ -208,7 +207,8 @@ def generate_frames():
                                 cls = output[5]
                                 c = int(cls)  # integer class
                                 id = int(id)  # integer id
-                                tracking_ids.append(id)
+                                if id not in tracking_ids:
+                                    tracking_ids.append(id)
                                 label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
                                     (f'{id} {conf:.2f}' if hide_class else f'{id} {names[c]} {conf:.2f}'))
                                 annotator.box_label(bboxes, label, color=colors(c, True))
@@ -223,10 +223,7 @@ def generate_frames():
             real_frame = cv2.resize(real_frame, (840, 840))
             try:    
                 _, buffer = cv2.imencode('.jpg', real_frame)
-                
                 frame = buffer.tobytes()
-                # print(frame)
-                
                 yield(b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
             
             except Exception as e:
@@ -256,9 +253,9 @@ def sound_alarm():
     is_alarm = False
     
 
-async def send_trackingids():
+def send_trackingids():
     global tracking_ids, tracking_ids_sent
-    tracking_ids_sent = tracking_ids
+    tracking_ids_sent = copy.deepcopy(tracking_ids)
     tracking_ids = []
     return tracking_ids_sent
 
@@ -303,14 +300,13 @@ async def livestream():
     return StreamingResponse(generate_frames(),  media_type="multipart/x-mixed-replace;boundary=frame") 
 
 # send json data stream to the client
-app.get("/video/trackingids")
+@app.get("/video/trackingids")
 async def trackingID_request():
-    return StreamingResponse(send_trackingids(), media_type="application/json")
+    return send_trackingids()
         
  
 @app.post("/video/requests")
 async def handle_form(data: Data):
-    # print(data.camera,data.detection, data.tracking, data.recording)
     global camera_switch, detection_obj, detection_switch, tracking_switch, recording, recorder_frame, out
     camera_switch = data.camera
     detection_switch = data.detection
@@ -342,15 +338,12 @@ async def root(file: UploadFile = File(...)):
 
 @app.post("/video/filterdetection")
 async def handle_detection_types(filteredArray: Filter):
-    # print(filteredArray.class_filteration_list)
     global detection_obj, model_all_names
     detection_obj.model.classes = filteredArray.class_filteration_list if filteredArray.class_filteration_list else model_all_names
     
 @app.post("/video/setalarm")
 async def handle_detection_alarm(alarm: AlarmClass):
     global alert_class, is_alarm
-    print(alarm.alarm_class_number)
-    
     alert_class = alarm.alarm_class_number
     is_alarm = alarm.is_alarm
     
