@@ -165,10 +165,10 @@ def main():
         # print(result)
         frame = cv2.resize(frame, (780, 540), interpolation = cv2.INTER_LINEAR)
         out_file = None
-        model.show_result(
+        frame = model.show_result(
             frame,
             result,
-            show=show,
+            show=False,
             wait_time=int(1000. / fps) if fps else 0,
             out_file=out_file,
             thickness=2)

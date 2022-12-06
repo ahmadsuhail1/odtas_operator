@@ -26,7 +26,7 @@ from pathlib import Path
 import sys
 from typing import Union, List, Optional
 
-
+path = Path(__file__).resolve()
 path = sys.path.insert(0, '/yolov5')
 
 
@@ -102,7 +102,7 @@ strong_sort_weights=WEIGHTS / 'osnet_x0_25_msmt17.pt'
 config_strongsort=ROOT / 'strong_sort/configs/strong_sort.yaml'
 nr_sources = 1
 half = False
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = '0' if torch.cuda.is_available() else ''
 hide_labels = False
 hide_class = False
 hide_conf = False
