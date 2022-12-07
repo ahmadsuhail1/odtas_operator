@@ -1,8 +1,8 @@
 import struct
 from typing import Optional
 
-from command_ids import *
-from commands import *
+from simplebgc.command_ids import *
+from simplebgc.commands import *
 
 
 # 1u => int

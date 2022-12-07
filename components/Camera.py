@@ -16,7 +16,7 @@ import sys
 path = sys.path.insert(0, '/yolov5')
 
 device =  importlib.import_module("python-capture-device-list.device")
-from yolov5.utils.general import (LOGGER, check_img_size, cv2)
+from yolov5.utils.general import (LOGGER, check_img_size)
 
 
 
@@ -29,23 +29,25 @@ class ObjectDetection:
     PATH = ROOT / 'yolov5'
     
     # Get camera list
-    device_list = device.getDeviceList()
-    # print(device_list)
-    index = 0
+    # device_list = device.getDeviceList()
+    # # print(device_list)
+    # index = 0
     
-    for camera in device_list:
-        # print(str(index) + ': ' + camera[0] + ' ' + str(camera[1]))
-        index += 1
+    # for camera in device_list:
+    #     # print(str(index) + ': ' + camera[0] + ' ' + str(camera[1]))
+    #     index += 1
         
-    last_index = index - 1
+    # last_index = index - 1
 
-    if last_index < 0:
-        print("No device is connected")
+    # if last_index < 0:
+    #     print("No device is connected")
         
-    camera_number = last_index
+    # camera_number = last_index
     
     
-    def __init__(self, model_name, imgsz = (640,640)):
+    # def __init__(self, model_name, imgsz = (640,640)):
+    
+    def __init__(self, capture_index ,model_name, imgsz = (640,640)):
         """
         Initializes the class with output file.
         :param capture_index: Index of the video camera to be used for object detection.
@@ -53,7 +55,8 @@ class ObjectDetection:
         :param imgsz: Size of the image to be used for object detection.
         """
         # initializing  variables for video camera stream 
-        self.capture_index = self.camera_number
+        # self.capture_index = self.camera_number
+        self.capture_index = capture_index
         self.capture_index = str(self.capture_index)
         self.is_url = self.capture_index.lower().startswith(('rtsp://', 'rtmp://', 'http://', 'https://'))
         self.webcam = self.capture_index.isnumeric()

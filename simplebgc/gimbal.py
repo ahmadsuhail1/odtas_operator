@@ -3,12 +3,12 @@ from logging import getLogger
 
 from serial import Serial
 
-from command_ids import CMD_CONTROL, CMD_GET_ANGLES, CMD_CONFIRM
-from command_parser import parse_cmd
-from commands import ControlOutCmd, GetAnglesInCmd
-from serial_example import create_message, \
+from simplebgc.command_ids import CMD_CONTROL, CMD_GET_ANGLES, CMD_CONFIRM
+from simplebgc.command_parser import parse_cmd
+from simplebgc.commands import ControlOutCmd, GetAnglesInCmd
+from simplebgc.serial_example import create_message, \
     pack_message, read_message, Message, read_cmd
-from units import from_degree_per_sec, from_degree
+from simplebgc.units import from_degree_per_sec, from_degree
 
 logger = getLogger(__name__)
 

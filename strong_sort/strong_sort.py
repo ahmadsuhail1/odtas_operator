@@ -40,9 +40,9 @@ class StrongSORT(object):
 
     def update(self, dets,  ori_img):
         
-        xyxys = dets[:, 0:4]
-        confs = dets[:, 4]
-        clss = dets[:, 5]
+        xyxys = dets[:, 0:4].data.cpu()
+        confs = dets[:, 4].data.cpu()
+        clss = dets[:, 5].data.cpu()
         
         classes = clss.numpy()
         xywhs = xyxy2xywh(xyxys.numpy())

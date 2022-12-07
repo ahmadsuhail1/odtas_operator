@@ -11,7 +11,8 @@ import torch
 import torch.backends.cudnn as cudnn
 import numpy as np
 import uvicorn
-import asyncio
+
+from gimbal_camera import single_object_tracking
 # Other Imports
 
 from threading import Thread
@@ -58,8 +59,8 @@ from yolov5.utils.torch_utils import select_device
 from yolov5.utils.plots import Annotator, colors
 from strong_sort.utils.parser import get_config
 from strong_sort.strong_sort import StrongSORT
-from PIL import Image as im
 
+from mmtrack.apis import inference_sot, init_model
 # # =============================== MAIN APP =======================
 
 # # course origin resource sharing middleware
@@ -79,7 +80,7 @@ app.add_middleware(
 )
 
 global camera_switch, recording, detection_switch, tracker, recorder_frame, out, alert_class, is_alarm, tracking_ids
-
+global incoming_tracked_obj
 camera_switch = False
 recording = False
 detection_switch = False
@@ -112,6 +113,12 @@ device = select_device(device)
 WEIGHTS.mkdir(parents=True, exist_ok=True)
 VIDEOS.mkdir(parents=True,exist_ok=True)
 
+# SINGLE OBJECT TRACKING MODEL
+sot_config_model = Path('mmtracking/configs/sot/siamese_rpn/siamese_rpn_r50_20e_lasot.py')
+sot_checkpoint_model = Path('mmtracking/checkpoints/siamese_rpn_r50_20e_uav123_20220420_181845-dc2d4831.pth')
+config_path = Path(__file__).parent / sot_config_model
+checkpoint_path = Path(__file__).parent / sot_checkpoint_model
+model = init_model(str(config_path), str(checkpoint_path))
 # ======================================================================
 
 cfg = get_config()
@@ -147,6 +154,11 @@ class AlarmClass(BaseModel):
     alarm_class_number : int = None
     is_alarm : bool = False
     
+class TrackingPoints(BaseModel): 
+    width : int = None
+    height : int = None
+    clickX : int = None
+    clickY : int = None
     
 
 
@@ -154,6 +166,7 @@ class AlarmClass(BaseModel):
 def generate_frames():
     global tracker, outputs, tracking_ids, alert_class
     global detection_obj, detection_switch, camera_switch, tracking_switch, model_all_names, recorder_frame, is_alarm
+    
     names = detection_obj.model.names
     model_all_names = list(names.keys())
     
@@ -219,7 +232,7 @@ def generate_frames():
                 if tracking_switch:
                     real_frame = annotator.result()
 
-            real_frame = cv2.resize(real_frame, (840, 840))
+            real_frame = cv2.resize(real_frame, (480, 640))
             try:    
                 _, buffer = cv2.imencode('.jpg', real_frame)
                 frame = buffer.tobytes()
@@ -258,7 +271,12 @@ def send_trackingids():
     tracking_ids = []
     return tracking_ids_sent
 
+def is_point_in_bounding_box():
+    pass
 
+def single_object_tracking():
+    
+    pass
 # ================================================================================ 
 
 
@@ -346,7 +364,13 @@ async def handle_detection_alarm(alarm: AlarmClass):
     alert_class = alarm.alarm_class_number
     is_alarm = alarm.is_alarm
     
-
+@app.post("/video/trackingpoints")
+async def handle_tracking_points(trackingPoints: TrackingPoints):
+    global incoming_tracked_obj
+    print(trackingPoints)
+    incoming_tracked_obj = copy.deepcopy(List(trackingPoints))
+    
+    
 
 # ========================================================================
 # Server Runner

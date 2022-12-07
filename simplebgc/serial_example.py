@@ -4,8 +4,8 @@ from logging import getLogger
 
 import serial
 
-from command_ids import *
-from commands import ControlOutCmd, RawCmd
+from simplebgc.command_ids import *
+from simplebgc.commands import ControlOutCmd, RawCmd
 
 logger = getLogger(__name__)
 

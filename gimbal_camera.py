@@ -31,37 +31,38 @@ def open_camera(index):
 
 
 # @torch.no_grad
-def main():
+def single_object_tracking(frame, bbox, width, height, model):
+# def main():
     # print OpenCV version
-    print("OpenCV version: " + cv2.__version__)
-    show = True
-    input_number = 1
-    sot_config_model = Path('configs/sot/siamese_rpn/siamese_rpn_r50_20e_lasot.py')
-    sot_checkpoint_model = Path('checkpoints/siamese_rpn_r50_20e_lasot_20220420_181845-dd0f151e.pth')
-    config_path = Path(__file__).parent / sot_config_model
-    checkpoint_path = Path(__file__).parent / sot_checkpoint_model
+    # print("OpenCV version: " + cv2.__version__)
+    # show = True
+    # input_number = 1
+    # sot_config_model = Path('configs/sot/siamese_rpn/siamese_rpn_r50_20e_lasot.py')
+    # sot_checkpoint_model = Path('checkpoints/siamese_rpn_r50_20e_lasot_20220420_181845-dd0f151e.pth')
+    # config_path = Path(__file__).parent / sot_config_model
+    # checkpoint_path = Path(__file__).parent / sot_checkpoint_model
     
-    print(config_path)
-    print(checkpoint_path)
+    # print(config_path)
+    # print(checkpoint_path)
     
     # config = "mmtracking/configs/sot/siamese_rpn/siamese_rpn_r50_20e_lasot.py"
     # checkpoint = "mmtracking/checkpoints/siamese_rpn_r50_20e_lasot_20220420_181845-dd0f151e.pth"
     # Get camera list
-    device_list = device.getDeviceList()
+    # device_list = device.getDeviceList()
     # print(device_list)
-    index = 0
+    # index = 0
 
 
 
-    for camera in device_list:
-        # print(str(index) + ': ' + camera[0] + ' ' + str(camera[1]))
-        index += 1
+    # for camera in device_list:
+    #     # print(str(index) + ': ' + camera[0] + ' ' + str(camera[1]))
+    #     index += 1
 
-    last_index = index - 1
+    # last_index = index - 1
 
-    if last_index < 0:
-        print("No device is connected")
-        return
+    # if last_index < 0:
+    #     print("No device is connected")
+    #     return
 
 
     gimbal = Gimbal()
@@ -73,13 +74,13 @@ def main():
 
     # Select a camera
     # camera_number = select_camera(last_index)
-    camera_number = last_index
+    # camera_number = last_index
     
 
     # load images
     
-    cap = open_camera(camera_number)
-    _,frame = cap.read()
+    # cap = open_camera(camera_number)
+    # _,frame = cap.read()
     rows,cols, _ = frame.shape
 
     x_medium = int(cols//2)
@@ -98,8 +99,11 @@ def main():
 
     tracked_obj_exist = False
 
-    FRAME_HEIGHT = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    FRAME_WIDTH = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    # FRAME_HEIGHT = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    # FRAME_WIDTH = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    
+    FRAME_HEIGHT = int(height)
+    FRAME_WIDTH = int(width)
     print(FRAME_HEIGHT,FRAME_WIDTH)
 
 
@@ -120,7 +124,7 @@ def main():
 
 
     # build the model from a config file and a checkpoint file
-    model = init_model(config_path, checkpoint_path)
+    # model = init_model(config_path, checkpoint_path)
 
     i = 0
 
@@ -128,11 +132,12 @@ def main():
         
         print("STARTING POSITION: ", yaw_position , "   " , pitch_position)
 
-        _, frame = cap.read()
+        # _, frame = cap.read()
     # test and show/save the images
     # for i, img in enumerate(imgs):
         if i == 0:
-            init_bbox = list(cv2.selectROI("TESTING", frame, False, False))
+            # init_bbox = list(cv2.selectROI("TESTING", frame, False, False))
+            init_bbox = list(bbox)
             # convert (x1, y1, w, h) to (x1, y1, x2, y2)
             init_bbox[2] += init_bbox[0]
             init_bbox[3] += init_bbox[1]
@@ -163,9 +168,9 @@ def main():
             cv2.line(frame,(0,y_medium), (FRAME_WIDTH,y_medium), (255,0,0),2)
         
         # print(result)
-        frame = cv2.resize(frame, (780, 540), interpolation = cv2.INTER_LINEAR)
+        frame = cv2.resize(frame, (480, 640), interpolation = cv2.INTER_LINEAR)
         out_file = None
-        frame = model.show_result(
+        tracked_frame = model.show_result(
             frame,
             result,
             show=False,
@@ -213,6 +218,7 @@ def main():
     
 
         print(yaw_position , "  " , pitch_position)
+        return tracked_frame
     # Open camera
     # cap = open_camera(camera_number)
 
@@ -234,5 +240,5 @@ def main():
     #     cap.release() 
     #     cv2.destroyAllWindows() 
 
-if __name__ == "__main__":
-    main()
+# if __name__ == "__main__":
+#     main()
