@@ -69,7 +69,7 @@ class ObjectDetection:
         imgsz = check_img_size(imgsz, s=self.stride)  # check image size
         
         self.cap = self.get_video_capture()
-        assert self.cap.isOpened()
+        # assert self.cap.isOpened()
 
         self.grabbed, self.frame = self.cap.read()
 
