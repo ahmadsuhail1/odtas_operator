@@ -5,6 +5,7 @@ from fastapi.responses import StreamingResponse
 import shutil
 from pydantic import BaseModel
 import copy
+import requests
 
 from simplebgc.gimbal import Gimbal, ControlMode
 
@@ -97,10 +98,10 @@ MOT = False
 SOT = False
 global detection_obj, model_all_names
 
-detection_obj = ObjectDetection("http://192.168.137.111:4747/video","yolov5n.pt")
+# detection_obj = ObjectDetection("http://192.168.137.111:4747/video","yolov5n.pt")
 
 
-detection_obj.start()
+# detection_obj.start()
 # # --------------------------- functions to run detection -----------------------------
 
 yolo_weights=WEIGHTS / 'yolov5n.pt'
@@ -123,7 +124,7 @@ sot_config_model = Path('mmtracking/configs/sot/mixformer/mixformer_cvt_500e_got
 sot_checkpoint_model = Path('mmtracking/checkpoints/mixformer_cvt_500e_got10k.pth')
 config_path = Path(__file__).parent / sot_config_model
 checkpoint_path = Path(__file__).parent / sot_checkpoint_model
-sot_model = init_model(str(config_path), str(checkpoint_path))
+# sot_model = init_model(str(config_path), str(checkpoint_path))
 # ======================================================================
 
 cfg = get_config()
@@ -536,7 +537,7 @@ def detect_vidfile(file: File):
         source_str = 'videos/'+filepath.name
         source_path = Path(source_str)
         
-        subprocess.run(["python", "yolov5/detect.py", "--weights", "last_htv_23.pt",
+        subprocess.run(["python", "yolov5/detect.py", "--weights", "weights/last_htv_23.pt",
                     "--source", source_path, "--project", "output_vids" ], shell=True)
     
 def process_VidFile(file: File):
@@ -547,6 +548,14 @@ def process_VidFile(file: File):
     file2 = os.path.join(os.getcwd(), "/videos", file.filename)
     detect_vidfile(file2)
 
+
+def upload_vidfile_to_cloud(file: File):
+    try:
+        request = requests.get("https://cloudinary.com", timeout=3)
+        print("Cloudinary is up")
+        # pass
+    except:
+        print("Cloudinary is down")
 # =================================================================
 
 
@@ -591,10 +600,11 @@ async def handle_form(data: Data):
 
 
 @app.post("/uploadvideo")
-async def root(file: UploadFile = File(...)):
+async def upload_video(file: UploadFile = File(...)):
     os.makedirs(os.path.join("videos"), exist_ok=True)
     with concurrent.futures.ProcessPoolExecutor() as executor:
-        executor.submit(process_VidFile(file))
+        # executor.submit(process_VidFile(file))
+        executor.submit(upload_vidfile_to_cloud(file))
     return {"filename ": file.filename}
 
 
