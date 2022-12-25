@@ -97,7 +97,7 @@ app.add_middleware(
 
 )
 
-global camera_switch, recording, detection_switch, tracker, recorder_frame, out, alert_class, is_alarm, tracking_ids
+global camera_switch, recording, detection_switch, tracker, recorder_frame, out, alert_class, is_alarm, tracking_ids, person_count, person_count_array
 global incoming_tracked_obj, MOT, SOT, end_SOT
 camera_switch = False
 recording = False
@@ -112,6 +112,8 @@ incoming_tracked_obj = []
 MOT = False
 SOT = False
 end_SOT = False
+person_count_array = []
+person_count = 0
 global detection_obj, model_all_names
 
 detection_obj = ObjectDetection(0,"yolov5n.pt")
@@ -120,7 +122,7 @@ detection_obj = ObjectDetection(0,"yolov5n.pt")
 detection_obj.start()
 # # --------------------------- functions to run detection -----------------------------
 
-yolo_weights=WEIGHTS / 'yolov5n.pt'
+yolo_weights=WEIGHTS / 'yolov5s.pt'
 strong_sort_weights=WEIGHTS / 'osnet_x0_25_msmt17.pt'
 config_strongsort=ROOT / 'strong_sort/configs/strong_sort.yaml'
 nr_sources = 1
@@ -143,8 +145,8 @@ VIDEOS.mkdir(parents=True,exist_ok=True)
 # checkpoint_path = Path(__file__).parent / sot_checkpoint_model
 # sot_model = init_model(str(config_path), str(checkpoint_path))
 
-sot_config_model = Path('pysot/experiments/siamrpn_alex_dwxcorr/config.yaml')
-sot_snapshot_model = Path('pysot/experiments/siamrpn_alex_dwxcorr/model.pth')
+sot_config_model = Path('pysot/experiments/siamrpn_mobilev2_l234_dwxcorr/config.yaml')
+sot_snapshot_model = Path('pysot/experiments/siamrpn_mobilev2_l234_dwxcorr/model.pth')
 cfg.merge_from_file(sot_config_model)
 cfg.CUDA = torch.cuda.is_available() and cfg.CUDA
 
@@ -205,7 +207,7 @@ def generate_frames():
     
     # global variables
     global tracker, outputs, tracking_ids, alert_class,incoming_tracked_obj, MOT, SOT
-    global detection_obj, detection_switch, camera_switch, tracking_switch, model_all_names, recorder_frame, is_alarm
+    global detection_obj, detection_switch, camera_switch, tracking_switch, model_all_names, recorder_frame, is_alarm, person_count_array, person_count
     
     # for frame size of the attached camera
     frame  = detection_obj.frame
@@ -252,15 +254,7 @@ def generate_frames():
     FRAME_HEIGHT = int(detection_obj.height)
     FRAME_WIDTH = int(detection_obj.width)
     
-    
-    IN_VIDEO = True
-    OUT_VIDEO = False
-    
-    # setting the fps for SOT
-    fps = 30
 
-    # initializing the variable for extracing the frame returned from SOT model
-    tracked_frame = None
 
     # set True to speed up constant image size inference
     cudnn.benchmark = True  
@@ -273,8 +267,10 @@ def generate_frames():
         # if camera is on then read the frame
         if camera_switch:    
             # reading frame from camera
+            
             real_frame = detection_obj.read()
             
+            s = "" # String to be displayed on the frame
             # if recording is on then save the frame by making a copy
             if recording:
                 real_frame = cv2.putText(real_frame,"Recording...", (0,20), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255),2)
@@ -289,6 +285,15 @@ def generate_frames():
                 results = detection_obj.score_frame(real_frame)
                 # plotting the bboxes
                 real_frame = detection_obj.plot_boxes(results, real_frame)
+                
+            
+                # # Print results
+                for c in results[0].cpu().numpy().astype(int):
+                    n = (results[0] == c).sum()  # detections per class
+                    s += f"{n} {names[int(c)]}{'s' * (n > 1)}, \n"  # add to string
+                real_frame = cv2.putText(real_frame,"{}".format (s), (0,45), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255),2)
+                
+                
 
                 # if alarm is on then check if the detected object is in the alert class list
                 # alarm will be triggered if the detected object is in the frame
@@ -299,15 +304,17 @@ def generate_frames():
             
             if detection_switch and tracking_switch:
                  # processing the frames for MOT model
-                print (SOT,MOT, "SOT,MOT")
+                # print (SOT,MOT, "SOT,MOT")
                 annotator = Annotator(real_frame, line_width=2, pil=not ascii, example = str(names))
 
                 if MOT and not SOT:
-                    print("In MOT")
+                    # print("In MOT")
                     results = detection_obj.model(real_frame)
 
                     # extracting the predictions from YOLO model for STRONGSORT MOT model
                     det = results.pred[0]
+                    
+                    
 
                 # if detection is available then process the frame for MOT model
                     if det is not None and len(det):
@@ -325,19 +332,36 @@ def generate_frames():
                         
                         # draw boxes for visualization
                         if len(outputs) > 0:
+                            for c in clss.unique():
+                                n = (clss == c).sum()  # detections per class
+                                s += f"{n} {names[int(c)]}{'s' * (n > 1)} \n"  # add to string
+                                
                             for _, (output, conf) in enumerate(zip(outputs, confs)):
-            
+                                
                                 bboxes = output[0:4]
                                 id = output[4]
                                 cls = output[5]
                                 c = int(cls)  # integer class
                                 id = int(id)  # integer id
+                                
+                                
+                                if (id not in person_count_array) and c==0:
+                                    person_count_array.append(id)
+                                    person_count += 1
+                                
                                 if id not in tracking_ids:
-                                    tracking_ids.append(id)
+                                    print(cls, "class")
+                                    tracking_ids.append(id)          
+                                    
                                 label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
                                     (f'{id} {conf:.2f}' if hide_class else f'{id} {names[c]} {conf:.2f}'))
                                 annotator.box_label(bboxes, label, color=colors(c, True))
                                 real_frame = annotator.result()
+                                
+                                
+                                real_frame = cv2.putText(real_frame,"Total Person Count: {}".format(person_count), (0,45), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255),2)
+                                
+                                real_frame =  cv2.putText(real_frame,"{}".format (s), (0,80), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255),2)
             
                     
                     else:
@@ -466,7 +490,10 @@ def generate_frames():
                 #  ========================================
                 # 
                 # ===========================
-                    
+            
+            # if not tracking_switch:
+            #     person_count = 0
+                        
 
 
             # real_frame = cv2.resize(real_frame, (480, 640))
@@ -501,6 +528,7 @@ def sound_alarm():
     run_alarm_in_thread()
     is_alarm = False
     
+
 
 def send_trackingids():
     global tracking_ids, tracking_ids_sent
@@ -627,7 +655,8 @@ async def livestream():
 @app.get("/video/trackingids")
 async def trackingID_request():
     return send_trackingids()
-        
+    
+
  
 @app.post("/video/requests")
 async def handle_form(data: Data):
