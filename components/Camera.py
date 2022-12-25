@@ -62,14 +62,14 @@ class ObjectDetection:
         self.webcam = self.capture_index.isnumeric()
         
         # Loading Model
-        self.device = '0' if torch.cuda.is_available() else ''
+        self.device = '0' if torch.cuda.is_available() else 'cpu'
         print("Using Device: ", self.device)
         self.model = self.load_model(model_name)
         self.stride, self.classes, self.pt  = self.model.stride, self.model.names, self.model.pt
         imgsz = check_img_size(imgsz, s=self.stride)  # check image size
         
         self.cap = self.get_video_capture()
-        # assert self.cap.isOpened()
+        assert self.cap.isOpened()
 
         self.grabbed, self.frame = self.cap.read()
 
@@ -98,7 +98,9 @@ class ObjectDetection:
         Creates a new video streaming object to extract video frame by frame to make prediction on.
         :return: opencv2 video capture object, with lowest quality frame available for video.
         """
-        return cv2.VideoCapture(self.capture_index)
+        return cv2.VideoCapture(0)
+
+        # return cv2.VideoCapture(self.capture_index)
 
     def load_model(self, model_name):
         """

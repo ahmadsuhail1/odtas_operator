@@ -1,5 +1,10 @@
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+from __future__ import unicode_literals
+
 # imports for working with FASTAPI
-from fastapi import FastAPI, UploadFile, File, Request, Response, Form
+from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import shutil
@@ -30,6 +35,8 @@ from pathlib import Path
 import sys
 from typing import Union, List, Optional
 
+
+
 path = Path(__file__).resolve()
 path = sys.path.insert(0, '/yolov5')
 
@@ -45,25 +52,33 @@ ROOT = FILE.parents[0]  # yolov5 strongsort root directory
 WEIGHTS = ROOT / 'weights'
 VIDEOS = ROOT / 'videos'
 
+
 if str(ROOT) not in sys.path:
     sys.path.append(str(ROOT))  # add ROOT to PATH
 if str(ROOT / 'yolov5') not in sys.path:
     sys.path.append(str(ROOT / 'yolov5'))  # add yolov5 ROOT to PATH
 if str(ROOT / 'strong_sort') not in sys.path:
     sys.path.append(str(ROOT / 'strong_sort'))  # add strong_sort ROOT to PATH
+if str(ROOT / 'pysot') not in sys.path:
+    sys.path.append(str(ROOT / 'pysot'))  # add pysot ROOT to PATH
 ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # relative
+
 
 
 from components.Camera import ObjectDetection
 from components.alarm import run_alarm_in_thread
 
-from yolov5.utils.general import (LOGGER, xyxy2xywh)
+# from yolov5.utils.general import (LOGGER, xyxy2xywh)
 from yolov5.utils.torch_utils import select_device
 from yolov5.utils.plots import Annotator, colors
 from strong_sort.utils.parser import get_config
 from strong_sort.strong_sort import StrongSORT
 
-from mmtrack.apis import inference_sot, init_model
+from pysot.core.config import cfg
+from pysot.models.model_builder import ModelBuilder
+from pysot.tracker.tracker_builder import build_tracker
+torch.set_num_threads(2)
+# from mmtrack.apis import inference_sot, init_model
 # # =============================== MAIN APP =======================
 
 # # course origin resource sharing middleware
@@ -83,7 +98,7 @@ app.add_middleware(
 )
 
 global camera_switch, recording, detection_switch, tracker, recorder_frame, out, alert_class, is_alarm, tracking_ids
-global incoming_tracked_obj, MOT, SOT
+global incoming_tracked_obj, MOT, SOT, end_SOT
 camera_switch = False
 recording = False
 detection_switch = False
@@ -96,12 +111,13 @@ tracking_ids = []
 incoming_tracked_obj = []
 MOT = False
 SOT = False
+end_SOT = False
 global detection_obj, model_all_names
 
-# detection_obj = ObjectDetection("http://192.168.137.111:4747/video","yolov5n.pt")
+detection_obj = ObjectDetection(0,"yolov5n.pt")
 
 
-# detection_obj.start()
+detection_obj.start()
 # # --------------------------- functions to run detection -----------------------------
 
 yolo_weights=WEIGHTS / 'yolov5n.pt'
@@ -109,7 +125,7 @@ strong_sort_weights=WEIGHTS / 'osnet_x0_25_msmt17.pt'
 config_strongsort=ROOT / 'strong_sort/configs/strong_sort.yaml'
 nr_sources = 1
 half = False
-device = '0' if torch.cuda.is_available() else ''
+device = '0' if torch.cuda.is_available() else 'cpu'
 hide_labels = False
 hide_class = False
 hide_conf = False
@@ -119,32 +135,47 @@ device = select_device(device)
 WEIGHTS.mkdir(parents=True, exist_ok=True)
 VIDEOS.mkdir(parents=True,exist_ok=True)
 
+#=======================================================================
 # SINGLE OBJECT TRACKING MODEL
-sot_config_model = Path('mmtracking/configs/sot/mixformer/mixformer_cvt_500e_got10k.py')
-sot_checkpoint_model = Path('mmtracking/checkpoints/mixformer_cvt_500e_got10k.pth')
-config_path = Path(__file__).parent / sot_config_model
-checkpoint_path = Path(__file__).parent / sot_checkpoint_model
+# sot_config_model = Path('mmtracking/configs/sot/mixformer/mixformer_cvt_500e_got10k.py')
+# sot_checkpoint_model = Path('mmtracking/checkpoints/mixformer_cvt_500e_got10k.pth')
+# config_path = Path(__file__).parent / sot_config_model
+# checkpoint_path = Path(__file__).parent / sot_checkpoint_model
 # sot_model = init_model(str(config_path), str(checkpoint_path))
+
+sot_config_model = Path('pysot/experiments/siamrpn_alex_dwxcorr/config.yaml')
+sot_snapshot_model = Path('pysot/experiments/siamrpn_alex_dwxcorr/model.pth')
+cfg.merge_from_file(sot_config_model)
+cfg.CUDA = torch.cuda.is_available() and cfg.CUDA
+
+# create sot model
+sot_model = ModelBuilder()
+# load model
+sot_model.load_state_dict(torch.load(sot_snapshot_model, map_location=lambda storage, loc: storage.cpu()))
+sot_model.eval().to(device)
+
+sot_tracker = build_tracker(sot_model)
 # ======================================================================
 
-cfg = get_config()
-cfg.merge_from_file(config_strongsort)
+cfg_mot = get_config()
+cfg_mot.merge_from_file(config_strongsort)
 
 tracker = StrongSORT(
     strong_sort_weights,
     device,
     half,
-    max_dist=cfg.STRONGSORT.MAX_DIST,
-    max_iou_distance=cfg.STRONGSORT.MAX_IOU_DISTANCE,
-    max_age=cfg.STRONGSORT.MAX_AGE,
-    n_init=cfg.STRONGSORT.N_INIT,
-    nn_budget=cfg.STRONGSORT.NN_BUDGET,
-    mc_lambda=cfg.STRONGSORT.MC_LAMBDA,
-    ema_alpha=cfg.STRONGSORT.EMA_ALPHA,
+    max_dist=cfg_mot.STRONGSORT.MAX_DIST,
+    max_iou_distance=cfg_mot.STRONGSORT.MAX_IOU_DISTANCE,
+    max_age=cfg_mot.STRONGSORT.MAX_AGE,
+    n_init=cfg_mot.STRONGSORT.N_INIT,
+    nn_budget=cfg_mot.STRONGSORT.NN_BUDGET,
+    mc_lambda=cfg_mot.STRONGSORT.MC_LAMBDA,
+    ema_alpha=cfg_mot.STRONGSORT.EMA_ALPHA,
 )
 
 tracker.model.warmup()
 outputs = [None] * nr_sources
+
 
 # The variables in base model should be same as declared in the frontend
 class Data(BaseModel):
@@ -183,9 +214,6 @@ def generate_frames():
     names = detection_obj.model.names
     model_all_names = list(names.keys())
 
-
-    # for frame id in SOT model
-    tracker_initialize_id = 0
 
     # initializing the GIMBAL
     # gimbal = Gimbal()
@@ -234,16 +262,16 @@ def generate_frames():
     # initializing the variable for extracing the frame returned from SOT model
     tracked_frame = None
 
-
+    # set True to speed up constant image size inference
+    cudnn.benchmark = True  
+    
+    # for sot tracking initialization
+    first_frame_SOT = True
     # starting the infinite loop for generating frames
     while True:     
         
         # if camera is on then read the frame
-        if camera_switch:
-            
-            # set True to speed up constant image size inference
-            cudnn.benchmark = True  
-            
+        if camera_switch:    
             # reading frame from camera
             real_frame = detection_obj.read()
             
@@ -264,128 +292,35 @@ def generate_frames():
 
                 # if alarm is on then check if the detected object is in the alert class list
                 # alarm will be triggered if the detected object is in the frame
-                if  is_alarm and (alert_class in results[0].numpy().astype(int)) :
+                if  is_alarm and (alert_class in results[0].cpu().numpy().astype(int)) :
                     sound_alarm()
             # =======================================
             
             
             if detection_switch and tracking_switch:
                  # processing the frames for MOT model
+                print (SOT,MOT, "SOT,MOT")
                 annotator = Annotator(real_frame, line_width=2, pil=not ascii, example = str(names))
 
-                
-                results = detection_obj.model(real_frame)
+                if MOT and not SOT:
+                    print("In MOT")
+                    results = detection_obj.model(real_frame)
 
-                # extracting the predictions from YOLO model for STRONGSORT MOT model
-                det = results.pred[0]
+                    # extracting the predictions from YOLO model for STRONGSORT MOT model
+                    det = results.pred[0]
 
                 # if detection is available then process the frame for MOT model
-                if det is not None and len(det):
-                    
-                    # converting the x,y,w,h to x1,y1,x2,y2 format
-                    # xywhs = xyxy2xywh(det[:, 0:4])
-                    
-                    # standard x,w,w,h format
-                    xywhs = det[:, 0:4]
-                    confs = det[:, 4]
-                    clss = det[:, 5]
-                    
-                    # if the tracking object exists or if incoming_tracked_obj contains point x,y 
-                    # And run only if Single Object Tracking is True
-                    if (incoming_tracked_obj or tracked_obj_exist) and SOT:
+                    if det is not None and len(det):
                         
-                        # setting Multi Object Tracking to False
-                        print(SOT)
-                        MOT = False
+                        # converting the x,y,w,h to x1,y1,x2,y2 format
+                        # xywhs = xyxy2xywh(det[:, 0:4])
                         
-                        # check if the clicked point is in any bounding box, if true get the coordinates of the bbox
-                        bbox = is_point_in_bounding_box(xywhs)
-
-                        # extracted bbox coordinates are in the form of x1,x2,y1,y2
-                        # for initializing SOT model tracking, we need to get the center of the bbox
+                        # standard x,w,w,h format
+                        xywhs = det[:, 0:4]
+                        confs = det[:, 4]
+                        clss = det[:, 5]
                         
-                        # sot model is the name of the model we are using for single tracking, real_frame is the actual frame for we have provided, from where the tracking will start, bbox is the bbox coordinates of the object we want to track, tracker_initialize_id is the frame id
-                        result = inference_sot(sot_model, real_frame, bbox ,tracker_initialize_id)
-                        tracker_initialize_id += 1
-
-
-                        # if the result is empty then set the tracked_obj_exist to False
-                        if len(result) == 0:
-                            x_medium = int(cols//2)
-                            y_medium = int(rows//2)
-                            tracked_obj_exist = False
                         
-                        # if the result is not empty then set the tracked_obj_exist to True
-                        if len(result) > 0:
-                            result_key = result.get('track_bboxes') 
-                            x1,y1,x2,y2 = int(result_key[0]),int(result_key[1]),int(result_key[2]),int(result_key[3])
-                            x_medium, y_medium = int((x1 + x2)/2),int((y1 + y2)/2)
-                            tracked_obj_exist = True
-
-
-                        # frame = cv2.resize(frame, (480, 640), interpolation = cv2.INTER_LINEAR)
-                        out_file = None
-                        
-                        # ==============================================
-                        print(detection_obj.frame)
-                        tracked_frame = sot_model.show_result(
-                            detection_obj.frame,
-                            result,
-                            show=False,
-                            wait_time=int(1000. / fps) if fps else 0,
-                            out_file=out_file,
-                            thickness=2)
-
-                        print(tracked_frame)
-
-                        if (yaw_position >= YAW_MIN_LIMIT_ANGLE and yaw_position <= YAW_MAX_LIMIT_ANGLE):
-                        # and (pitch_position >= PITCH_UPWARD_LIMIT_ANGLE and (pitch_position <= PITCH_DOWNWARD_LIMIT_ANGLE)):
-                            if x_medium < center_x - 70:
-                                if yaw_position != YAW_MIN_LIMIT_ANGLE:
-                                    yaw_position -= 1
-                                    # gimbal.control(
-                                    #     pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle=0,
-                                    #     yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
-
-                            elif x_medium > center_x + 70:
-                                if yaw_position != YAW_MAX_LIMIT_ANGLE:
-                                    yaw_position += 1
-                                    # gimbal.control(
-                                    #     pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle=0,
-                                    #     yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
-
-                            else:
-                                pass
-                        
-                        if pitch_position >= PITCH_UPWARD_LIMIT_ANGLE and pitch_position <= PITCH_DOWNWARD_LIMIT_ANGLE:
-                            if y_medium < center_y - 70:
-                                
-                                if pitch_position != PITCH_UPWARD_LIMIT_ANGLE:
-                                    pitch_position -=1
-                                    # gimbal.control(
-                                    #     pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle=pitch_position,
-                                    #     yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=0)
-
-                            elif y_medium > center_y + 70:
-                                if pitch_position != PITCH_DOWNWARD_LIMIT_ANGLE:
-                                    pitch_position +=1
-                                    # gimbal.control(
-                                    #     pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle=pitch_position,
-                                    #     yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=0)
-
-                            else: 
-                                pass
-                        
-                        # ======================================================================================
-                        if not tracked_obj_exist:
-                            tracker_initialize_id = 0
-                            SOT = False
-                            MOT = True
-                            print(SOT, MOT)
-
-                        incoming_tracked_obj = []
-                    
-                    if tracking_switch and MOT:
                         outputs = tracker.update(det, real_frame)
                         
                         # draw boxes for visualization
@@ -402,18 +337,136 @@ def generate_frames():
                                 label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
                                     (f'{id} {conf:.2f}' if hide_class else f'{id} {names[c]} {conf:.2f}'))
                                 annotator.box_label(bboxes, label, color=colors(c, True))
-
-                else:
-                    if tracking_switch:
+                                real_frame = annotator.result()
+            
+                    
+                    else:
                         tracker.increment_ages()
-                
+                        # if the tracking object exists or if incoming_tracked_obj contains point x,y 
+                        # And run only if Single Object Tracking is True
+                # print(incoming_tracked_obj, "incoming_tracked_obj")
+                # print(tracked_obj_exist, "tracked_obj_exist")
+                # print(SOT, "SOT")
+                if (incoming_tracked_obj or tracked_obj_exist) and SOT:
+                    print("IN SOTTTTTTTTTT ")
+                    # print(first_frame_SOT, "first_frame_SOT")
+                    # print(xywhs, "xywhs")
+
+                    if first_frame_SOT:
+                        # check if the clicked point is in any bounding box, if true get the coordinates of the bbox
+                        bbox = is_point_in_bbox(xywhs)
+                        if bbox is not None:
+                            sot_tracker.init(real_frame, bbox)
+                            first_frame_SOT = False
+                            MOT = False
+                        if bbox is None:
+                            # if the point is not in any bbox then set the SOT to False and
+                            # first_frame_SOT to True so that the next time the point is clicked, it will be checked again
+                            SOT = False
+                            first_frame_SOT = True
+                            MOT = True
+                    else:
+                        # bbox = is_point_in_bbox(xywhs)
+                        # if bbox is None:
+                        
+                        sot_outputs = sot_tracker.track(real_frame)
+                    
+                        # setting Multi Object Tracking to False
+                        # MOT = False
+                        
+                        # extracted bbox coordinates are in the form of x1,x2,y1,y2
+                        # for initializing SOT model tracking, we need to get the center of the bbox
+                        
+                        # sot model is the name of the model we are using for single tracking, real_frame is the actual frame for we have provided, from where the tracking will start, bbox is the bbox coordinates of the object we want to track, tracker_initialize_id is the frame id
+                        if len(sot_outputs) > 0:
+                            if not end_SOT:
+                                if 'polygon' in sot_outputs:
+                                    polygon = np.array(sot_outputs['polygon']).astype(np.int32)
+                                    cv2.polylines(frame, [polygon.reshape((-1, 1, 2))],
+                                                True, (0, 255, 0), 3)
+                                    mask = ((sot_outputs['mask'] > cfg.TRACK.MASK_THERSHOLD) * 255)
+                                    mask = mask.astype(np.uint8)
+                                    mask = np.stack([mask, mask*255, mask]).transpose(1, 2, 0)
+                                    frame = cv2.addWeighted(frame, 0.77, mask, 0.23, -1)
+                                else:
+                                    sot_bbox = list(map(int, sot_outputs['bbox']))
+                                    cv2.rectangle(real_frame, (sot_bbox[0], sot_bbox[1]),
+                                                (sot_bbox[0]+sot_bbox[2], sot_bbox[1]+sot_bbox[3]),
+                                                (0, 255, 0), 3)
+                                    x1,y1,x2,y2 = int(sot_bbox[0]),int(sot_bbox[1]),int(sot_bbox[0]+sot_bbox[2]),int(sot_bbox[1]+sot_bbox[3])
+                                    x_medium, y_medium = int((x1 + x2)/2),int((y1 + y2)/2)
+                                    tracked_obj_exist = True
+                            else:
+                                SOT = False
+                                MOT = True
+                                tracked_obj_exist = False
+                                first_frame_SOT = True
+
+                        else:
+                            
+                        # if the result is empty then set the tracked_obj_exist to False
+                            # x_medium = int(cols//2)
+                            # y_medium = int(rows//2)
+                            SOT = False
+                            MOT = True
+                            tracked_obj_exist = False
+                            first_frame_SOT = True
+
+
+                        # frame = cv2.resize(frame, (480, 640), interpolation = cv2.INTER_LINEAR)
+                        
+                        # ==============================================
+                        
+                        # if (yaw_position >= YAW_MIN_LIMIT_ANGLE and yaw_position <= YAW_MAX_LIMIT_ANGLE):
+                        # # and (pitch_position >= PITCH_UPWARD_LIMIT_ANGLE and (pitch_position <= PITCH_DOWNWARD_LIMIT_ANGLE)):
+                        #     if x_medium < center_x - 70:
+                        #         if yaw_position != YAW_MIN_LIMIT_ANGLE:
+                        #             yaw_position -= 1
+                        #             # gimbal.control(
+                        #             #     pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle=0,
+                        #             #     yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
+
+                        #     elif x_medium > center_x + 70:
+                        #         if yaw_position != YAW_MAX_LIMIT_ANGLE:
+                        #             yaw_position += 1
+                        #             # gimbal.control(
+                        #             #     pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle=0,
+                        #             #     yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
+
+                        #     else:
+                        #         pass
+                        
+                        # if pitch_position >= PITCH_UPWARD_LIMIT_ANGLE and pitch_position <= PITCH_DOWNWARD_LIMIT_ANGLE:
+                            # if y_medium < center_y - 70:
+                                
+                            #     if pitch_position != PITCH_UPWARD_LIMIT_ANGLE:
+                            #         pitch_position -=1
+                            #         # gimbal.control(
+                            #         #     pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle=pitch_position,
+                            #         #     yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=0)
+
+                            # elif y_medium > center_y + 70:
+                            #     if pitch_position != PITCH_DOWNWARD_LIMIT_ANGLE:
+                            #         pitch_position +=1
+                            #         # gimbal.control(
+                            #         #     pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle=pitch_position,
+                                    #     yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=0)
+
+                            # else: 
+                            #     pass
+
+                        incoming_tracked_obj = []
+                        # else:
+                        #     MOT = True
+                        #     SOT = False
+                        #     tracked_obj_exist = False
+                        #     first_frame_SOT = True
+                            
+                        
                 #  ========================================
                 # 
                 # ===========================
-                if tracking_switch and MOT:
-                    real_frame = annotator.result()
-                if tracking_switch and SOT:
-                    real_frame = tracked_frame
+                    
 
 
             # real_frame = cv2.resize(real_frame, (480, 640))
@@ -480,14 +533,19 @@ def scale_boxes(img1_shape, boxes, img0_shape, ratio_pad=None):
     # boxes[:, [0, 2]] -= pad[0]  # x padding
     # boxes[:, [1, 3]] -= pad[1]  # y padding
     # boxes[:, :4] /= gain
-    boxes[0] -= pad[0]
-    boxes[1] -= pad[1]
-    boxes[0] /= gain
-    boxes[1] /= gain
-    # clip_boxes(boxes, img0_shape)
-    return boxes
+    print(gain, "gain value")
+    print(pad, "pad value")
+    if gain != 0 and pad != 0:
+        boxes[0] -= pad[0]
+        boxes[1] -= pad[1]
+        boxes[0] /= gain
+        boxes[1] /= gain
+        # clip_boxes(boxes, img0_shape)
+        return boxes
+    else:
+        return boxes
 
-def is_point_in_bounding_box(detected2DArray):
+def is_point_in_bbox(detected2DArray):
     global incoming_tracked_obj, detection_obj
     # print(incoming_tracked_obj)
 
@@ -505,8 +563,7 @@ def is_point_in_bounding_box(detected2DArray):
     new_points_list =[]
     [new_points_list.append(y) for y in new_points]
     bboxes = detected2DArray[0].cpu().numpy().astype(int)
-    print(bboxes)
-    print(type(new_points_list))
+    
     # for i, bbox in enumerate(bboxes):
     #     print(type(bbox))
     #     print(bbox)
@@ -515,13 +572,9 @@ def is_point_in_bounding_box(detected2DArray):
         print("Clicked in BBOX")
 
         return bboxes 
-    
-    
+    else:
+        return None
 
-
-def single_object_tracking():
-    
-    pass
 # ================================================================================ 
 
 
@@ -537,9 +590,10 @@ def detect_vidfile(file: File):
         source_str = 'videos/'+filepath.name
         source_path = Path(source_str)
         
-        subprocess.run(["python", "yolov5/detect.py", "--weights", "weights/last_htv_23.pt",
+        # subprocess.run(["python", "yolov5/detect.py", "--weights", "weights/last_htv_23.pt",
+        #             "--source", source_path, "--project", "output_vids" ], shell=True)
+        subprocess.run(["python", "yolov5/detect.py", "--weights", "yolov5s.pt",
                     "--source", source_path, "--project", "output_vids" ], shell=True)
-    
 def process_VidFile(file: File):
     # with concurrent.futures.ThreadPoolExecutor() as executor:
     #     executor.submit(make_vidfile, file)
@@ -583,10 +637,11 @@ async def handle_form(data: Data):
     tracking_switch = data.tracking
     recording = data.recording
     MOT = tracking_switch
+    SOT if not(tracking_switch) else MOT
     
     if recording and out is None:
         now=datetime.datetime.now() 
-        fourcc = cv2.VideoWriter_fourcc(*'MP4V')
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         source_str = 'videos/'+'vid_{}.mp4'.format(str(now).replace(":",''))
         # recorded_video_path = Path(source_str)
         out = cv2.VideoWriter(source_str, fourcc, 20.0, (640, 480))
@@ -603,8 +658,8 @@ async def handle_form(data: Data):
 async def upload_video(file: UploadFile = File(...)):
     os.makedirs(os.path.join("videos"), exist_ok=True)
     with concurrent.futures.ProcessPoolExecutor() as executor:
-        # executor.submit(process_VidFile(file))
-        executor.submit(upload_vidfile_to_cloud(file))
+        executor.submit(process_VidFile(file))
+        # executor.submit(upload_vidfile_to_cloud(file))
     return {"filename ": file.filename}
 
 
@@ -622,12 +677,16 @@ async def handle_detection_alarm(alarm: AlarmClass):
 @app.post("/video/trackingpoints")
 async def handle_tracking_points(trackingPoints: TrackingPoints):
     global incoming_tracked_obj, SOT
-    print(trackingPoints)
+    print(trackingPoints, "trackingPoints")
     incoming_tracked_obj = copy.deepcopy(list(trackingPoints))
     SOT =  True
+    # print(SOT, "SOT when called on route")
 
-    
-    
+@app.post("/video/end_sot")   
+async  def end_sot():
+    global end_SOT
+    end_SOT = True 
+
 
 # ========================================================================
 # Server Runner
