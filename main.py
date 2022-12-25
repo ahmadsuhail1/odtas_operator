@@ -97,11 +97,9 @@ app.add_middleware(
 
 )
 
-<<<<<<< HEAD
+# # --------------------------- global variables -----------------------------
 global camera_switch, recording, detection_switch, tracker, recorder_frame, out, alert_class, is_alarm, tracking_ids, person_count, person_count_array
-=======
-global camera_switch, recording, detection_switch, tracker, recorder_frame, out, alert_class, is_alarm, tracking_ids
->>>>>>> 26429a596438879f37f7946f25bfca62ecbb8582
+
 global incoming_tracked_obj, MOT, SOT, end_SOT
 camera_switch = False
 recording = False
@@ -116,11 +114,8 @@ incoming_tracked_obj = []
 MOT = False
 SOT = False
 end_SOT = False
-<<<<<<< HEAD
 person_count_array = []
 person_count = 0
-=======
->>>>>>> 26429a596438879f37f7946f25bfca62ecbb8582
 global detection_obj, model_all_names
 
 detection_obj = ObjectDetection(0,"yolov5n.pt")
@@ -152,13 +147,8 @@ VIDEOS.mkdir(parents=True,exist_ok=True)
 # checkpoint_path = Path(__file__).parent / sot_checkpoint_model
 # sot_model = init_model(str(config_path), str(checkpoint_path))
 
-<<<<<<< HEAD
 sot_config_model = Path('pysot/experiments/siamrpn_mobilev2_l234_dwxcorr/config.yaml')
 sot_snapshot_model = Path('pysot/experiments/siamrpn_mobilev2_l234_dwxcorr/model.pth')
-=======
-sot_config_model = Path('pysot/experiments/siamrpn_alex_dwxcorr/config.yaml')
-sot_snapshot_model = Path('pysot/experiments/siamrpn_alex_dwxcorr/model.pth')
->>>>>>> 26429a596438879f37f7946f25bfca62ecbb8582
 cfg.merge_from_file(sot_config_model)
 cfg.CUDA = torch.cuda.is_available() and cfg.CUDA
 
@@ -271,21 +261,6 @@ def generate_frames():
     # set True to speed up constant image size inference
     cudnn.benchmark = True  
     
-<<<<<<< HEAD
-=======
-    IN_VIDEO = True
-    OUT_VIDEO = False
-    
-    # setting the fps for SOT
-    fps = 30
-
-    # initializing the variable for extracing the frame returned from SOT model
-    tracked_frame = None
-
-    # set True to speed up constant image size inference
-    cudnn.benchmark = True  
-    
->>>>>>> 26429a596438879f37f7946f25bfca62ecbb8582
     # for sot tracking initialization
     first_frame_SOT = True
     # starting the infinite loop for generating frames
@@ -331,28 +306,17 @@ def generate_frames():
             
             if detection_switch and tracking_switch:
                  # processing the frames for MOT model
-<<<<<<< HEAD
                 # print (SOT,MOT, "SOT,MOT")
                 annotator = Annotator(real_frame, line_width=2, pil=not ascii, example = str(names))
 
                 if MOT and not SOT:
                     # print("In MOT")
-=======
-                print (SOT,MOT, "SOT,MOT")
-                annotator = Annotator(real_frame, line_width=2, pil=not ascii, example = str(names))
-
-                if MOT and not SOT:
-                    print("In MOT")
->>>>>>> 26429a596438879f37f7946f25bfca62ecbb8582
                     results = detection_obj.model(real_frame)
 
                     # extracting the predictions from YOLO model for STRONGSORT MOT model
                     det = results.pred[0]
-<<<<<<< HEAD
                     
                     
-=======
->>>>>>> 26429a596438879f37f7946f25bfca62ecbb8582
 
                 # if detection is available then process the frame for MOT model
                     if det is not None and len(det):
@@ -395,14 +359,11 @@ def generate_frames():
                                     (f'{id} {conf:.2f}' if hide_class else f'{id} {names[c]} {conf:.2f}'))
                                 annotator.box_label(bboxes, label, color=colors(c, True))
                                 real_frame = annotator.result()
-<<<<<<< HEAD
                                 
                                 
                                 real_frame = cv2.putText(real_frame,"Total Person Count: {}".format(person_count), (0,45), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255),2)
                                 
                                 real_frame =  cv2.putText(real_frame,"{}".format (s), (0,80), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255),2)
-=======
->>>>>>> 26429a596438879f37f7946f25bfca62ecbb8582
             
                     
                     else:
@@ -531,14 +492,10 @@ def generate_frames():
                 #  ========================================
                 # 
                 # ===========================
-<<<<<<< HEAD
             
             # if not tracking_switch:
             #     person_count = 0
                         
-=======
-                    
->>>>>>> 26429a596438879f37f7946f25bfca62ecbb8582
 
 
             # real_frame = cv2.resize(real_frame, (480, 640))
