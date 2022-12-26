@@ -33,7 +33,9 @@ import json
 
 from pathlib import Path
 import sys
-from typing import Union, List, Optional
+from typing import Union, List
+from collections import deque
+
 
 
 
@@ -99,8 +101,11 @@ app.add_middleware(
 
 # # --------------------------- global variables -----------------------------
 global camera_switch, recording, detection_switch, tracker, recorder_frame, out, alert_class, is_alarm, tracking_ids, person_count, person_count_array
-
+global operator_obj
 global incoming_tracked_obj, MOT, SOT, end_SOT
+global pitch_speed, yaw_speed, yaw_position, pitch_position, YAW_MAX_LIMIT_ANGLE, YAW_MIN_LIMIT_ANGLE, PITCH_DOWNWARD_LIMIT_ANGLE, PITCH_UPWARD_LIMIT_ANGLE
+global gimbal
+operator_obj = None
 camera_switch = False
 recording = False
 detection_switch = False
@@ -116,15 +121,26 @@ SOT = False
 end_SOT = False
 person_count_array = []
 person_count = 0
+
+pitch_speed = 0
+yaw_speed = 0
+pitch_position = 0
+yaw_position = 0
+YAW_MAX_LIMIT_ANGLE = 0
+YAW_MIN_LIMIT_ANGLE = 0
+PITCH_DOWNWARD_LIMIT_ANGLE = 0
+PITCH_UPWARD_LIMIT_ANGLE = 0
+gimbal = None
+
 global detection_obj, model_all_names
 
-detection_obj = ObjectDetection(0,"yolov5n.pt")
+detection_obj = ObjectDetection("yolov5n.pt")
 
 
 detection_obj.start()
 # # --------------------------- functions to run detection -----------------------------
 
-yolo_weights=WEIGHTS / 'yolov5s.pt'
+yolo_weights=WEIGHTS / 'yolov5n.pt'
 strong_sort_weights=WEIGHTS / 'osnet_x0_25_msmt17.pt'
 config_strongsort=ROOT / 'strong_sort/configs/strong_sort.yaml'
 nr_sources = 1
@@ -179,7 +195,23 @@ tracker = StrongSORT(
 
 tracker.model.warmup()
 outputs = [None] * nr_sources
+#  =====================================================
+ # setting the angle rotation speed in  degree/sec
+# pitch means upward/downward and yaw means left/right
+# roll is not used in this project since gimbal is 2 axis
+pitch_speed = 30
+yaw_speed = 50
 
+# initializing the yaw and pitch position of the gimbal
+yaw_position = 0
+pitch_position = 0
+
+# setting the max/min yaw and pitch angles of the gimbal
+YAW_MAX_LIMIT_ANGLE = 165
+YAW_MIN_LIMIT_ANGLE = -165
+PITCH_UPWARD_LIMIT_ANGLE = -10
+PITCH_DOWNWARD_LIMIT_ANGLE = 160
+# ============================================
 
 # The variables in base model should be same as declared in the frontend
 class Data(BaseModel):
@@ -201,7 +233,9 @@ class TrackingPoints(BaseModel):
     clickX : int = None
     clickY : int = None
     
-
+class OperatorInfo(BaseModel):
+    operator_id : str = None
+    operator_drone_id : str = None
 
 # making all the gradients false, since we are doing forward pass. This will reduce the memory consumption.
 @torch.no_grad()
@@ -210,6 +244,8 @@ def generate_frames():
     # global variables
     global tracker, outputs, tracking_ids, alert_class,incoming_tracked_obj, MOT, SOT
     global detection_obj, detection_switch, camera_switch, tracking_switch, model_all_names, recorder_frame, is_alarm, person_count_array, person_count
+    global yaw_position, pitch_position, yaw_speed, pitch_speed, YAW_MAX_LIMIT_ANGLE, YAW_MIN_LIMIT_ANGLE, PITCH_UPWARD_LIMIT_ANGLE, PITCH_DOWNWARD_LIMIT_ANGLE
+    global gimbal
     
     # for frame size of the attached camera
     frame  = detection_obj.frame
@@ -218,17 +254,15 @@ def generate_frames():
     names = detection_obj.model.names
     model_all_names = list(names.keys())
 
+    # Array of center points of tracked objects for historical trajectory
+    pts = [deque (maxlen=30) for _ in range(1000)]
+    
 
     # initializing the GIMBAL
     # gimbal = Gimbal()
     
     
-    # setting the angle rotation speed in  degree/sec
-    # pitch means upward/downward and yaw means left/right
-    # roll is not used in this project since gimbal is 2 axis
-    pitch_speed = 30
-    yaw_speed = 50
-    
+   
     
     # getting the total rows and columns in frame for centering the gimbal
     rows,cols, _ = frame.shape
@@ -241,15 +275,7 @@ def generate_frames():
     center_x = int(cols//2)
     center_y = int(rows//2)
 
-    # initializing the yaw and pitch position of the gimbal
-    yaw_position = 0
-    pitch_position = 0
-
-    # setting the max/min yaw and pitch angles of the gimbal
-    YAW_MAX_LIMIT_ANGLE = 165
-    YAW_MIN_LIMIT_ANGLE = -165
-    PITCH_UPWARD_LIMIT_ANGLE = -10
-    PITCH_DOWNWARD_LIMIT_ANGLE = 160
+    
 
     # variable for single object tracking. if the object is not tracked, then it will be set to False
     tracked_obj_exist = False
@@ -354,7 +380,16 @@ def generate_frames():
                                 if id not in tracking_ids:
                                     print(cls, "class")
                                     tracking_ids.append(id)          
-                                    
+                                
+                                center = (int((bboxes[0]+bboxes[2])/2), int((bboxes[1]+bboxes[3])/2))
+                                pts[id].append(center)
+                                
+                                for j in range(1,len(pts[id])):
+                                    if pts[id][j-1] is None or pts[id][j] is None:
+                                        continue
+                                    thickness = int(np.sqrt(64/float(j+1))*2)
+                                    cv2.line(real_frame, (pts[id][j-1]), (pts[id][j]), colors(c, True), thickness)
+                                
                                 label = None if hide_labels else (f'{id} {names[c]}' if hide_conf else \
                                     (f'{id} {conf:.2f}' if hide_class else f'{id} {names[c]} {conf:.2f}'))
                                 annotator.box_label(bboxes, label, color=colors(c, True))
@@ -448,15 +483,15 @@ def generate_frames():
                         #     if x_medium < center_x - 70:
                         #         if yaw_position != YAW_MIN_LIMIT_ANGLE:
                         #             yaw_position -= 1
-                        #             # gimbal.control(
-                        #             #     pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle=0,
-                        #             #     yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
+                        #             gimbal.control(
+                        #                 pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle=pitch_position,
+                        #                 yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
 
                         #     elif x_medium > center_x + 70:
                         #         if yaw_position != YAW_MAX_LIMIT_ANGLE:
                         #             yaw_position += 1
                         #             # gimbal.control(
-                        #             #     pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle=0,
+                        #             #     pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle=pitch_position,
                         #             #     yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
 
                         #     else:
@@ -469,14 +504,14 @@ def generate_frames():
                             #         pitch_position -=1
                             #         # gimbal.control(
                             #         #     pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle=pitch_position,
-                            #         #     yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=0)
+                            #         #     yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
 
                             # elif y_medium > center_y + 70:
                             #     if pitch_position != PITCH_DOWNWARD_LIMIT_ANGLE:
                             #         pitch_position +=1
                             #         # gimbal.control(
                             #         #     pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle=pitch_position,
-                                    #     yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=0)
+                                    #     yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
 
                             # else: 
                             #     pass
@@ -493,7 +528,11 @@ def generate_frames():
                 # 
                 # ===========================
             
-            # if not tracking_switch:
+            if not tracking_switch:
+                SOT = False
+                first_frame_SOT = True
+                MOT = True
+                
             #     person_count = 0
                         
 
@@ -604,6 +643,30 @@ def is_point_in_bbox(detected2DArray):
         return bboxes 
     else:
         return None
+# ===============================================================================
+def control_camera(movement: str):
+    global gimbal, yaw_position, pitch_position, yaw_speed, pitch_speed
+    
+    if movement == "up":
+        if pitch_position != PITCH_UPWARD_LIMIT_ANGLE:
+            yaw_position -= 2
+            # gimbal.control(pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle= pitch_position, yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)    
+            print("pitch_position: ",pitch_position, " yaw_position: "  ,yaw_position)
+    elif movement == "down":
+        if pitch_position != PITCH_DOWNWARD_LIMIT_ANGLE:
+            pitch_position += 2
+            # gimbal.control(pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle= pitch_position, yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
+            print("pitch_position: ",pitch_position, " yaw_position: "  ,yaw_position)
+    elif movement == "left":
+        if yaw_position != YAW_MIN_LIMIT_ANGLE:
+            yaw_position -= 2
+            # gimbal.control(pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle= pitch_position, yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
+            print("pitch_position: ",pitch_position, " yaw_position: "  ,yaw_position)
+    else:
+        if yaw_position != YAW_MAX_LIMIT_ANGLE:
+            yaw_position += 2
+            # gimbal.control(pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle= pitch_position, yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
+            print("pitch_position: ",pitch_position, " yaw_position: "  ,yaw_position)
 
 # ================================================================================ 
 
@@ -684,6 +747,12 @@ async def handle_form(data: Data):
         out = None
     
 
+@app.post("/send_operator_info")
+async def recieved_operator_info(operator_info: OperatorInfo):
+    global operator_obj
+    operator_obj = operator_info
+    print(operator_obj)
+
 
 @app.post("/uploadvideo")
 async def upload_video(file: UploadFile = File(...)):
@@ -711,13 +780,33 @@ async def handle_tracking_points(trackingPoints: TrackingPoints):
     print(trackingPoints, "trackingPoints")
     incoming_tracked_obj = copy.deepcopy(list(trackingPoints))
     SOT =  True
+    
     # print(SOT, "SOT when called on route")
 
+@app.get("/cameramovement/left")
+async def handle_left_movement():
+    movement = "left"
+    control_camera(movement)
+    
+@app.get("/cameramovement/right")
+async def handle_right_movement():
+    movement = "right"
+    control_camera(movement)
+    
+@app.get("/cameramovement/up") 
+async def handle_up_movement():
+    movement = "up"
+    control_camera(movement)
+
+@app.get("/cameramovement/down")
+async def handle_down_movement():
+    movement = "down"
+    control_camera(movement)    
+    
 @app.post("/video/end_sot")   
 async  def end_sot():
     global end_SOT
     end_SOT = True 
-
 
 # ========================================================================
 # Server Runner

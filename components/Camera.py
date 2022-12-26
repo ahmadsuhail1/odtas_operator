@@ -44,10 +44,12 @@ class ObjectDetection:
         
     # camera_number = last_index
     
+    camera_number = 0
+    
     
     # def __init__(self, model_name, imgsz = (640,640)):
     
-    def __init__(self, capture_index ,model_name, imgsz = (640,640)):
+    def __init__(self ,model_name, imgsz = (640,640)):
         """
         Initializes the class with output file.
         :param capture_index: Index of the video camera to be used for object detection.
@@ -55,11 +57,11 @@ class ObjectDetection:
         :param imgsz: Size of the image to be used for object detection.
         """
         # initializing  variables for video camera stream 
-        # self.capture_index = self.camera_number
-        self.capture_index = capture_index
-        self.capture_index = str(self.capture_index)
-        self.is_url = self.capture_index.lower().startswith(('rtsp://', 'rtmp://', 'http://', 'https://'))
-        self.webcam = self.capture_index.isnumeric()
+        self.capture_index = self.camera_number
+        # self.capture_index = capture_index
+        # self.capture_index = str(self.capture_index)
+        # self.is_url = self.capture_index.lower().startswith(('rtsp://', 'rtmp://', 'http://', 'https://'))
+        # self.webcam = self.capture_index.isnumeric()
         
         # Loading Model
         self.device = '0' if torch.cuda.is_available() else 'cpu'
@@ -155,7 +157,7 @@ class ObjectDetection:
         labels, cord = results
         n = len(labels)
         x_shape, y_shape = frame.shape[1], frame.shape[0]
-        print(f"[INFO] Total {n} detections. . . ")
+        # print(f"[INFO] Total {n} detections. . . ")
 
         # looping through the detections
         for i in range(n):
