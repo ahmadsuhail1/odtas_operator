@@ -301,7 +301,7 @@ def generate_frames():
             s = "" # String to be displayed on the frame
             # if recording is on then save the frame by making a copy
             if recording:
-                real_frame = cv2.putText(real_frame,"Recording...", (0,20), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255),2)
+                real_frame = cv2.putText(real_frame,"Recording...", (0,20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255),2)
                 recorder_frame = real_frame.copy()
                 
             # =======================================
@@ -662,12 +662,22 @@ def control_camera(movement: str):
             yaw_position -= 2
             # gimbal.control(pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle= pitch_position, yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
             print("pitch_position: ",pitch_position, " yaw_position: "  ,yaw_position)
-    else:
+    elif movement == "right":
         if yaw_position != YAW_MAX_LIMIT_ANGLE:
             yaw_position += 2
             # gimbal.control(pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle= pitch_position, yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
             print("pitch_position: ",pitch_position, " yaw_position: "  ,yaw_position)
-
+    elif movement == "reset":
+        yaw_position = 0
+        pitch_position = 0
+        # gimbal.control(pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle= pitch_position, yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
+        print("pitch_position: ",pitch_position, " yaw_position: "  ,yaw_position)
+        
+    elif movement == "lock":
+        # gimbal.control(roll_mode=ControlMode.no_control,pitch_mode=ControlMode.no_control,yaw_mode=ControlMode.no_control)
+        print("Gimbal Locked")
+    else:
+        print("Invalid Movement")
 # ================================================================================ 
 
 
@@ -683,10 +693,10 @@ def detect_vidfile(file: File):
         source_str = 'videos/'+filepath.name
         source_path = Path(source_str)
         
-        # subprocess.run(["python", "yolov5/detect.py", "--weights", "weights/last_htv_23.pt",
-        #             "--source", source_path, "--project", "output_vids" ], shell=True)
-        subprocess.run(["python", "yolov5/detect.py", "--weights", "yolov5s.pt",
+        subprocess.run(["python", "yolov5/detect.py", "--weights", "weights/last_htv_23.pt",
                     "--source", source_path, "--project", "output_vids" ], shell=True)
+        # subprocess.run(["python", "yolov5/detect.py", "--weights", "weights/yolov5s.pt",
+        #             "--source", source_path, "--project", "output_vids" ], shell=True)
 def process_VidFile(file: File):
     # with concurrent.futures.ThreadPoolExecutor() as executor:
     #     executor.submit(make_vidfile, file)
@@ -801,6 +811,16 @@ async def handle_up_movement():
 @app.get("/cameramovement/down")
 async def handle_down_movement():
     movement = "down"
+    control_camera(movement) 
+    
+@app.get("/cameramovement/reset")
+async def handle_down_movement():
+    movement = "reset"
+    control_camera(movement)   
+
+@app.get("/cameramovement/lock")
+async def handle_down_movement():
+    movement = "lock"
     control_camera(movement)    
     
 @app.post("/video/end_sot")   

@@ -30,7 +30,7 @@ class Gimbal:
 
     def __init__(self, connection: Serial = None) -> None:
         if connection is None:
-            connection = Serial('COM7', baudrate=115200, timeout=10)
+            connection = Serial('COM3', baudrate=115200, timeout=10)
         self._connection = connection
 
     def send_message(self, message: Message):
