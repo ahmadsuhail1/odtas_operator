@@ -53,6 +53,7 @@ FILE = Path(__file__).resolve()
 ROOT = FILE.parents[0]  # yolov5 strongsort root directory
 WEIGHTS = ROOT / 'weights'
 VIDEOS = ROOT / 'videos'
+OUTPUT_VIDEOS = ROOT / 'output_vidS'
 
 
 if str(ROOT) not in sys.path:
@@ -154,6 +155,7 @@ iou_thres=0.50,  # NMS IOU threshold
 device = select_device(device)
 WEIGHTS.mkdir(parents=True, exist_ok=True)
 VIDEOS.mkdir(parents=True,exist_ok=True)
+OUTPUT_VIDEOS.mkdir(parents=True,exist_ok=True)
 
 #=======================================================================
 # SINGLE OBJECT TRACKING MODEL
@@ -746,7 +748,7 @@ async def handle_form(data: Data):
     if recording and out is None:
         now=datetime.datetime.now() 
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        source_str = 'videos/'+'vid_{}.mp4'.format(str(now).replace(":",''))
+        source_str = 'output_vids/'+'vid_{}.mp4'.format(str(now).replace(":",''))
         # recorded_video_path = Path(source_str)
         out = cv2.VideoWriter(source_str, fourcc, 20.0, (640, 480))
         #Start new thread for recording the video
