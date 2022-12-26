@@ -647,39 +647,41 @@ def is_point_in_bbox(detected2DArray):
         return None
 # ===============================================================================
 def control_camera(movement: str):
-    global gimbal, yaw_position, pitch_position, yaw_speed, pitch_speed
-    
-    if movement == "up":
-        if pitch_position != PITCH_UPWARD_LIMIT_ANGLE:
-            yaw_position -= 2
-            # gimbal.control(pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle= pitch_position, yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)    
-            print("pitch_position: ",pitch_position, " yaw_position: "  ,yaw_position)
-    elif movement == "down":
-        if pitch_position != PITCH_DOWNWARD_LIMIT_ANGLE:
-            pitch_position += 2
+    global gimbal, yaw_position, pitch_position, yaw_speed, pitch_speed, SOT
+    if not SOT:
+        if movement == "up":
+            if pitch_position != PITCH_UPWARD_LIMIT_ANGLE:
+                yaw_position -= 2
+                # gimbal.control(pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle= pitch_position, yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)    
+                print("pitch_position: ",pitch_position, " yaw_position: "  ,yaw_position)
+        elif movement == "down":
+            if pitch_position != PITCH_DOWNWARD_LIMIT_ANGLE:
+                pitch_position += 2
+                # gimbal.control(pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle= pitch_position, yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
+                print("pitch_position: ",pitch_position, " yaw_position: "  ,yaw_position)
+        elif movement == "left":
+            if yaw_position != YAW_MIN_LIMIT_ANGLE:
+                yaw_position -= 2
+                # gimbal.control(pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle= pitch_position, yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
+                print("pitch_position: ",pitch_position, " yaw_position: "  ,yaw_position)
+        elif movement == "right":
+            if yaw_position != YAW_MAX_LIMIT_ANGLE:
+                yaw_position += 2
+                # gimbal.control(pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle= pitch_position, yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
+                print("pitch_position: ",pitch_position, " yaw_position: "  ,yaw_position)
+        elif movement == "reset":
+            yaw_position = 0
+            pitch_position = 0
             # gimbal.control(pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle= pitch_position, yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
             print("pitch_position: ",pitch_position, " yaw_position: "  ,yaw_position)
-    elif movement == "left":
-        if yaw_position != YAW_MIN_LIMIT_ANGLE:
-            yaw_position -= 2
-            # gimbal.control(pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle= pitch_position, yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
-            print("pitch_position: ",pitch_position, " yaw_position: "  ,yaw_position)
-    elif movement == "right":
-        if yaw_position != YAW_MAX_LIMIT_ANGLE:
-            yaw_position += 2
-            # gimbal.control(pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle= pitch_position, yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
-            print("pitch_position: ",pitch_position, " yaw_position: "  ,yaw_position)
-    elif movement == "reset":
-        yaw_position = 0
-        pitch_position = 0
-        # gimbal.control(pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle= pitch_position, yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
-        print("pitch_position: ",pitch_position, " yaw_position: "  ,yaw_position)
-        
-    elif movement == "lock":
-        # gimbal.control(roll_mode=ControlMode.no_control,pitch_mode=ControlMode.no_control,yaw_mode=ControlMode.no_control)
-        print("Gimbal Locked")
+            
+        elif movement == "lock":
+            # gimbal.control(roll_mode=ControlMode.no_control,pitch_mode=ControlMode.no_control,yaw_mode=ControlMode.no_control)
+            print("Gimbal Locked")
+        else:
+            print("Invalid Movement")
     else:
-        print("Invalid Movement")
+        print("SOT is ON, Gimbal ")
 # ================================================================================ 
 
 
