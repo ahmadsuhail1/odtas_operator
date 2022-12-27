@@ -11,7 +11,7 @@ import shutil
 from pydantic import BaseModel
 import copy
 import requests
-
+import urllib
 from simplebgc.gimbal import Gimbal, ControlMode
 
 # imports for loading the YOLO Model
@@ -19,7 +19,8 @@ import torch
 import torch.backends.cudnn as cudnn
 import numpy as np
 import uvicorn
-
+import socketio
+import base64
 # from gimbal_camera import single_object_tracking
 # Other Imports
 
@@ -100,12 +101,15 @@ app.add_middleware(
 
 )
 
+
 # # --------------------------- global variables -----------------------------
 global camera_switch, recording, detection_switch, tracker, recorder_frame, out, alert_class, is_alarm, tracking_ids, person_count, person_count_array
-global operator_obj
+global operator_obj, trackingID
 global incoming_tracked_obj, MOT, SOT, end_SOT
 global pitch_speed, yaw_speed, yaw_position, pitch_position, YAW_MAX_LIMIT_ANGLE, YAW_MIN_LIMIT_ANGLE, PITCH_DOWNWARD_LIMIT_ANGLE, PITCH_UPWARD_LIMIT_ANGLE
 global gimbal
+global socketconnection
+trackingID = None
 operator_obj = None
 camera_switch = False
 recording = False
@@ -136,9 +140,15 @@ gimbal = None
 global detection_obj, model_all_names
 
 detection_obj = ObjectDetection("yolov5n.pt")
-
-
 detection_obj.start()
+
+sio = socketio.Client()
+try: 
+    sio.connect('http://4.240.59.37:3000')
+    socketconnection = True
+except:
+    print("VM Server is not running")
+    socketconnection = False
 # # --------------------------- functions to run detection -----------------------------
 
 yolo_weights=WEIGHTS / 'yolov5n.pt'
@@ -164,6 +174,9 @@ OUTPUT_VIDEOS.mkdir(parents=True,exist_ok=True)
 # config_path = Path(__file__).parent / sot_config_model
 # checkpoint_path = Path(__file__).parent / sot_checkpoint_model
 # sot_model = init_model(str(config_path), str(checkpoint_path))
+
+# sot_config_model = Path('pysot/experiments/siamrpn_alex_dwxcorr/config.yaml')
+# sot_snapshot_model = Path('pysot/experiments/siamrpn_alex_dwxcorr/model.pth')
 
 sot_config_model = Path('pysot/experiments/siamrpn_mobilev2_l234_dwxcorr/config.yaml')
 sot_snapshot_model = Path('pysot/experiments/siamrpn_mobilev2_l234_dwxcorr/model.pth')
@@ -221,7 +234,8 @@ class Data(BaseModel):
     detection: bool
     tracking: bool
     recording: bool
-    
+class TrackingID(BaseModel):
+    singleID:int    
 class Filter(BaseModel):
     class_filteration_list: List[int] = None
 
@@ -302,10 +316,7 @@ def generate_frames():
             
             s = "" # String to be displayed on the frame
             # if recording is on then save the frame by making a copy
-            if recording:
-                real_frame = cv2.putText(real_frame,"Recording...", (0,20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,0,255),2)
-                recorder_frame = real_frame.copy()
-                
+            
             # =======================================
 
             # if detection is ON and tracking switch is OFF then detect the objects in the frame from YOLO weights
@@ -320,8 +331,9 @@ def generate_frames():
                 # # Print results
                 for c in results[0].cpu().numpy().astype(int):
                     n = (results[0] == c).sum()  # detections per class
-                    s += f"{n} {names[int(c)]}{'s' * (n > 1)}, \n"  # add to string
-                real_frame = cv2.putText(real_frame,"{}".format (s), (0,45), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255),2)
+                    s += f"{n} {names[int(c)]}{'s' * (n > 1)} {os.linesep}"  # add to string
+                    # s += "{0} {1}{2}, {3}".format(n, (names[int(c)]),'s' * (n > 1), "\n" )  # add to string
+                real_frame = cv2.putText(real_frame,"{}".format (s), (0,45), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (144, 238, 144),2)
                 
                 
 
@@ -380,8 +392,55 @@ def generate_frames():
                                     person_count += 1
                                 
                                 if id not in tracking_ids:
-                                    print(cls, "class")
                                     tracking_ids.append(id)          
+                                    
+                                print(trackingID, "trackingID inside loop")
+                                if not trackingID:
+                                    # print('abrcadabra')
+                                    pass
+                                else:
+                                    if trackingID.singleID == id:
+                                        print('inside tracking id')
+                                        x_medium1, y_medium2 = int((bboxes[0] + bboxes[2])/2),int((bboxes[1] + bboxes[3])/2)
+                                        cv2.line(real_frame,(x_medium1,0), (x_medium1, FRAME_HEIGHT), (255,0,0),2)
+                                        cv2.line(real_frame,(0,y_medium2), (FRAME_WIDTH,y_medium2), (255,0,0),2)   
+                                        if (yaw_position >= YAW_MIN_LIMIT_ANGLE and yaw_position <= YAW_MAX_LIMIT_ANGLE):
+                                            # and (pitch_position >= PITCH_UPWARD_LIMIT_ANGLE and (pitch_position <= PITCH_DOWNWARD_LIMIT_ANGLE)):
+                                                if x_medium1 < center_x - 70:
+                                                    if yaw_position != YAW_MIN_LIMIT_ANGLE:
+                                                        yaw_position -= 1
+                                                        # gimbal.control(
+                                                        #     pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle=pitch_position,
+                                                        #     yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
+
+                                                elif x_medium1 > center_x + 70:
+                                                    if yaw_position != YAW_MAX_LIMIT_ANGLE:
+                                                        yaw_position += 1
+                                                        # gimbal.control(
+                                                        #     pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle=pitch_position,
+                                                        #     yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
+
+                                                else:
+                                                    pass
+                                            
+                                        if pitch_position >= PITCH_UPWARD_LIMIT_ANGLE and pitch_position <= PITCH_DOWNWARD_LIMIT_ANGLE:
+                                                if y_medium2 < center_y - 70:
+                                                    if pitch_position != PITCH_UPWARD_LIMIT_ANGLE:
+                                                        pitch_position -=1
+                                                        # gimbal.control(
+                                                        #     pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle=pitch_position,
+                                                        #     yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
+
+                                                elif y_medium2 > center_y + 70:
+                                                     if pitch_position != PITCH_DOWNWARD_LIMIT_ANGLE:
+                                                        pitch_position +=1
+                                                        # gimbal.control(
+                                                        #     pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle=pitch_position,
+                                                        #     yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)
+
+                                                else: 
+                                                    pass     
+                                
                                 
                                 center = (int((bboxes[0]+bboxes[2])/2), int((bboxes[1]+bboxes[3])/2))
                                 pts[id].append(center)
@@ -530,18 +589,27 @@ def generate_frames():
                 # 
                 # ===========================
             
-            if not tracking_switch:
+            if tracking_switch is False:
                 SOT = False
+                # trackingID = None
                 first_frame_SOT = True
+                
                 MOT = True
                 
             #     person_count = 0
                         
-
+            if recording:
+                real_frame = cv2.putText(real_frame,"Recording...", (0,20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (144, 238, 144),2)
+                recorder_frame = real_frame.copy()
+                
 
             # real_frame = cv2.resize(real_frame, (480, 640))
             try:    
                 _, buffer = cv2.imencode('.jpg', real_frame)
+                if socketconnection:
+                    data = base64.b64encode(buffer)
+                    sio.emit('data', data)
+                    
                 frame = buffer.tobytes()
                 yield(b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
             
@@ -558,7 +626,7 @@ def generate_frames():
 def record(out):
     global recorder_frame, recording
     while(recording):
-        time.sleep(0.05)
+        time.sleep(0.03)
         out.write(recorder_frame)
         
 
@@ -644,6 +712,7 @@ def is_point_in_bbox(detected2DArray):
 
         return bboxes 
     else:
+        print("Not Clicked in BBOX")
         return None
 # ===============================================================================
 def control_camera(movement: str):
@@ -651,7 +720,7 @@ def control_camera(movement: str):
     if not SOT:
         if movement == "up":
             if pitch_position != PITCH_UPWARD_LIMIT_ANGLE:
-                yaw_position -= 2
+                pitch_position -= 2
                 # gimbal.control(pitch_mode=ControlMode.angle, pitch_speed=pitch_speed, pitch_angle= pitch_position, yaw_mode=ControlMode.angle, yaw_speed=yaw_speed, yaw_angle=yaw_position)    
                 print("pitch_position: ",pitch_position, " yaw_position: "  ,yaw_position)
         elif movement == "down":
@@ -711,12 +780,17 @@ def process_VidFile(file: File):
 
 
 def upload_vidfile_to_cloud(file: File):
+    global operator_obj
     try:
-        request = requests.get("https://cloudinary.com", timeout=3)
-        print("Cloudinary is up")
+        # send file to given url with post request and file as a parameter
+        
+        response = requests.post(f"http://4.240.57.37:3000/videos/postVideo/{operator_obj.operator_id}", data= {"operator": operator_obj.operator_name}, files={"file": open(file, "rb")})
+        print(response)
+        # , files={"file": open(file, "rb")}
+        print("VM is up")
         # pass
     except:
-        print("Cloudinary is down")
+        print("VM is down")
 # =================================================================
 
 
@@ -746,7 +820,7 @@ async def handle_form(data: Data):
     recording = data.recording
     MOT = tracking_switch
     SOT if not(tracking_switch) else MOT
-    
+    print("camera_switch: ", camera_switch, " detection_switch: ", detection_switch, " tracking_switch: ", tracking_switch, " recording: ", recording)
     if recording and out is None:
         now=datetime.datetime.now() 
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
@@ -765,7 +839,8 @@ async def handle_form(data: Data):
 async def recieved_operator_info(operator_info: OperatorInfo):
     global operator_obj
     operator_obj = operator_info
-    print(operator_obj)
+    
+    print(operator_obj.operator_id)
 
 
 @app.post("/uploadvideo")
@@ -796,7 +871,18 @@ async def handle_tracking_points(trackingPoints: TrackingPoints):
     SOT =  True
     
     # print(SOT, "SOT when called on route")
+@app.post("/video/end_sot")   
+async  def end_sot():
+    global end_SOT
+    end_SOT = True 
 
+@app.post("/tracking/id")   
+async  def recieve_tracking_id(singleID: TrackingID):
+    global trackingID
+    trackingID = singleID
+    print(trackingID, "trackingID when api hit")
+    
+    
 @app.get("/cameramovement/left")
 async def handle_left_movement():
     movement = "left"
@@ -827,10 +913,6 @@ async def handle_down_movement():
     movement = "lock"
     control_camera(movement)    
     
-@app.post("/video/end_sot")   
-async  def end_sot():
-    global end_SOT
-    end_SOT = True 
 
 # ========================================================================
 # Server Runner
