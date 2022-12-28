@@ -261,7 +261,7 @@ def generate_frames():
     global tracker, outputs, tracking_ids, alert_class,incoming_tracked_obj, MOT, SOT
     global detection_obj, detection_switch, camera_switch, tracking_switch, model_all_names, recorder_frame, is_alarm, person_count_array, person_count
     global yaw_position, pitch_position, yaw_speed, pitch_speed, YAW_MAX_LIMIT_ANGLE, YAW_MIN_LIMIT_ANGLE, PITCH_UPWARD_LIMIT_ANGLE, PITCH_DOWNWARD_LIMIT_ANGLE
-    global gimbal
+    global gimbal, trackingID
     
     # for frame size of the attached camera
     frame  = detection_obj.frame
@@ -591,7 +591,7 @@ def generate_frames():
             
             if tracking_switch is False:
                 SOT = False
-                # trackingID = None
+                trackingID = None
                 first_frame_SOT = True
                 
                 MOT = True
