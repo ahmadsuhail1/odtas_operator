@@ -8,6 +8,8 @@ This repository only includes the backend of the operator side.
 The front-end repository of operator and admin portal repository (web based) will be merged later.
 
 The desktop application for operator is built using Next JS and Electron JS.
+Front-end of Drone Operator: https://github.com/uzair-muaz/Nextron_Odtas.git
+Admin Web Portal: https://github.com/UmerDfarooq/ODTAS.git
 
 # Minimum Requirements
 
